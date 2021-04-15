@@ -11,6 +11,7 @@ testDir = "."
 hashes = defaultdict(list)
 numDirectories = 0
 
+
 def buildTree(directoryPath: str, parent: DirectoryNode) -> DirectoryNode:
     global numDirectories
     node = DirectoryNode(path=directoryPath, parent=parent)
@@ -22,7 +23,8 @@ def buildTree(directoryPath: str, parent: DirectoryNode) -> DirectoryNode:
             # hash the contents of the file, insert into dict
             with open(entry.path, "rb") as currentFile:
                 m = hashlib.sha256(currentFile.read())
-                node.files[entry.path] = FileNode(entry.stat().st_size, m.hexdigest())
+                node.files[entry.path] = FileNode(entry.stat().st_size,
+                                                  m.hexdigest())
         elif entry.is_dir():
             node.subdirectoryNodes[entry.path] = buildTree(entry.path, node)
     # print(f"Adding node to hash: {node.path}")
@@ -36,8 +38,9 @@ def buildTree(directoryPath: str, parent: DirectoryNode) -> DirectoryNode:
     numDirectories += 1
     return node
 
+
 # shamelessly copied from https://stackoverflow.com/questions/13343700/
-def bytes2human(n: int, format: str ="%(value)i%(symbol)s") -> str:
+def bytes2human(n: int, format: str = "%(value)i%(symbol)s") -> str:
     """
     >>> bytes2human(10000)
     "9K"
@@ -54,20 +57,21 @@ def bytes2human(n: int, format: str ="%(value)i%(symbol)s") -> str:
             return format % locals()
     return format % dict(symbol=symbols[0], value=n)
 
+
 def run(directoryPath: str) -> None:
     global numDirectories
     if not os.path.isdir(directoryPath):
         raise Exception("Please supply a valid directory path")
 
-    fileHashes = {}
     rootNode = buildTree(directoryPath, None)
-    print(f"Scanned {numDirectories} directories ({bytes2human(rootNode.diskSpace)})", file=sys.stderr)
+    print(f"Scanned {numDirectories} directories \
+          ({bytes2human(rootNode.diskSpace)})", file=sys.stderr)
     # print(rootNode.__repr__()) # uncomment for debugging
 
     # Step 3: print out duplicate directories
     for nodeList in hashes.values():
         if len(nodeList) > 1:
-            print(f"Duplicate directories:", file=sys.stderr)
+            print("Duplicate directories:", file=sys.stderr)
             print("\t" + "\n\t".join([node.path for node in nodeList]))
 
 

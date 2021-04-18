@@ -10,39 +10,60 @@ class FileNode:
 
 
 class DirectoryNode(FileNode):
-
     def __init__(self, parent: DirectoryNode, path: str):
         super().__init__(diskSpace=-1, hash="")
         self.parent = parent
         self.path = path
         self.subdirectoryNodes = OrderedDict()
         self.files = OrderedDict()
+        self.numFiles = -1
+        self.numSubdirectories = -1
 
     def getHash(self) -> str:
         if not self.hash:
-            self.hash, self.diskSpace = self.__calculateHashAndDiskSpace__()
+            self.__calculateAggregateValues__()
         return self.hash
 
     def getDiskUsage(self) -> int:
         if self.diskSpace == -1:
-            self.hash, self.diskSpace = self.__calculateHashAndDiskSpace__()
+            self.__calculateAggregateValues__()
         return self.diskSpace
 
-    def __calculateHashAndDiskSpace__(self) -> tuple[str, int]:
+    def getNumFiles(self) -> int:
+        if self.numFiles == -1:
+            self.__calculateAggregateValues__()
+        return self.numFiles
+
+    def getNumSubdirectories(self) -> int:
+        if self.numSubdirectories == -1:
+            self.__calculateAggregateValues__()
+        return self.numSubdirectories
+
+    def __calculateAggregateValues__(self) -> tuple[str, int, int]:
         """
-        This has a side effect of saving to instance variables
-        & does not return a value
+        This has a side effect of saving to instance variables,
+        which is needed so that calculations for all child nodes are cached
         """
-        subfolderHashTuple, subfolderDiskUsageTuple = \
-            tuple(zip(*[child.__calculateHashAndDiskSpace__() for child in
-                        self.subdirectoryNodes.values()] or [("", 0)]))
+        subfolderHashTuple, subfolderDiskUsageTuple, \
+            subfolderNumFileTuple, subfolderNumSubdirTuple = \
+            tuple(zip(*[child.__calculateAggregateValues__().values() for child
+                        in self.subdirectoryNodes.values()]
+                      or [("", 0, 0, 0)]))
         subfolderHashes = "".join(subfolderHashTuple)
         fileHashes = "".join([file.hash for file in self.files.values()])
         fileDiskSpace = sum([file.diskSpace for file in self.files.values()])
-        self.hash = hashlib.sha256((subfolderHashes +
-                                    fileHashes).encode("utf-8")).hexdigest()
+        self.hash = hashlib.sha256(
+            (subfolderHashes + fileHashes).encode("utf-8")).hexdigest()
         self.diskSpace = sum(subfolderDiskUsageTuple, fileDiskSpace)
-        return (self.hash, self.diskSpace)
+        self.numFiles = sum(subfolderNumFileTuple, len(self.files))
+        self.numSubdirectories = sum(subfolderNumSubdirTuple,
+                                     len(self.subdirectoryNodes))
+        return {
+            "hash": self.hash,
+            "diskSpace": self.diskSpace,
+            "numFiles": self.numFiles,
+            "numSubdirectories": self.numSubdirectories
+        }
 
     def __repr__(self) -> str:
         reprLines = [f"{self.path}:\n  fileHashes for files:",

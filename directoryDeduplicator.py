@@ -50,7 +50,7 @@ def bytes2human(n: int, format: str = "%(value)i%(symbol)s") -> str:
     symbols = ("B", "K", "M", "G", "T", "P", "E", "Z", "Y")
     prefix = {}
     for i, s in enumerate(symbols[1:]):
-        prefix[s] = 1 << (i+1)*10
+        prefix[s] = 1 << (i + 1) * 10
     for symbol in reversed(symbols[1:]):
         if n >= prefix[symbol]:
             value = float(n) / prefix[symbol]
@@ -64,14 +64,21 @@ def run(directoryPath: str) -> None:
         raise Exception("Please supply a valid directory path")
 
     rootNode = buildTree(directoryPath, None)
-    print(f"Scanned {numDirectories} directories \
-          ({bytes2human(rootNode.diskSpace)})", file=sys.stderr)
+    print(f"Scanned {numDirectories} directories " +
+          f"({bytes2human(rootNode.diskSpace)})",
+          file=sys.stderr)
     # print(rootNode.__repr__()) # uncomment for debugging
 
     # Step 3: print out duplicate directories
     for nodeList in hashes.values():
         if len(nodeList) > 1:
-            print("Duplicate directories:", file=sys.stderr)
+            numFiles = nodeList[0].getNumFiles()
+            numSubdirs = nodeList[0].getNumSubdirectories()
+            diskSpace = bytes2human(nodeList[0].getDiskUsage())
+            summary = f"{numFiles} files, {numSubdirs} folders, {diskSpace}"
+            print(
+                f"Duplicate directory set ({summary}):",
+                file=sys.stderr)
             print("\t" + "\n\t".join([node.path for node in nodeList]))
 
 

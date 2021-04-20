@@ -1,19 +1,17 @@
 #!/usr/bin/env python3
 
 from DirectoryNode import DirectoryNode, FileNode
+from collections import defaultdict
 
+import click
 import hashlib
 import os
 import sys
-from collections import defaultdict
 
-testDir = "."
 hashes = defaultdict(list)
-numDirectories = 0
 
 
 def buildTree(directoryPath: str, parent: DirectoryNode) -> DirectoryNode:
-    global numDirectories
     node = DirectoryNode(path=directoryPath, parent=parent)
     entries = os.scandir(directoryPath)
     # consider sorting entries or inserting into heap
@@ -35,7 +33,6 @@ def buildTree(directoryPath: str, parent: DirectoryNode) -> DirectoryNode:
         for childDirNode in node.subdirectoryNodes.values():
             hashes[childDirNode.getHash()].remove(childDirNode)
     hashes[node.getHash()].append(node)
-    numDirectories += 1
     return node
 
 
@@ -58,18 +55,19 @@ def bytes2human(n: int, format: str = "%(value)i%(symbol)s") -> str:
     return format % dict(symbol=symbols[0], value=n)
 
 
-def run(directoryPath: str) -> None:
-    global numDirectories
-    if not os.path.isdir(directoryPath):
-        raise Exception("Please supply a valid directory path")
+@click.command()
+@click.argument("directory-path", type=click.Path(exists=True,
+                                                  file_okay=False))
+def run(directory_path: click.Path) -> None:
+    rootNode = buildTree(directory_path, None)
 
-    rootNode = buildTree(directoryPath, None)
-    print(f"Scanned {numDirectories} directories " +
+    # add one to numSubdirectories for root node
+    print(f"Scanned {rootNode.getNumSubdirectories() + 1} directories " +
           f"({bytes2human(rootNode.diskSpace)})",
           file=sys.stderr)
     # print(rootNode.__repr__()) # uncomment for debugging
 
-    # Step 3: print out duplicate directories
+    # print out duplicate directories
     for nodeList in hashes.values():
         if len(nodeList) > 1:
             numFiles = nodeList[0].getNumFiles()
@@ -81,6 +79,5 @@ def run(directoryPath: str) -> None:
                 file=sys.stderr)
             print("\t" + "\n\t".join([node.path for node in nodeList]))
 
-
-if __name__ == "__main__":
-    run(testDir)
+if __name__ == '__main__':
+    run()

@@ -1,6 +1,8 @@
 from __future__ import annotations
-import hashlib
+
 from collections import OrderedDict
+import xxhash
+import zlib
 
 
 class FileNode:
@@ -16,8 +18,8 @@ class DirectoryNode(FileNode):
         self.path = path
         self.subdirectoryNodes = OrderedDict()
         self.files = OrderedDict()
-        self.numFiles = -1
-        self.numSubdirectories = -1
+        self.numFiles = -1 # includes files in subfolders
+        self.numSubdirectories = -1 # includes folders of subfolders
 
     def getHash(self) -> str:
         if not self.hash:
@@ -49,11 +51,14 @@ class DirectoryNode(FileNode):
             tuple(zip(*[child.__calculateAggregateValues__().values() for child
                         in self.subdirectoryNodes.values()]
                       or [("", 0, 0, 0)]))
-        subfolderHashes = "".join(subfolderHashTuple)
-        fileHashes = "".join([file.hash for file in self.files.values()])
+        # need stable order for hashes to maintain file-renaming invariance
+        subfolderHashes = "".join(sorted(subfolderHashTuple))
+        fileHashes = "".join(sorted([file.hash for file in self.files.values()]))
+        fileAndFolderHashes = (subfolderHashes + fileHashes).encode("utf-8")
+        self.hash = xxhash.xxh64(fileAndFolderHashes).hexdigest()
+        # concatenate second hash/checksum for reduced chance of collisions
+        self.hash += str(zlib.crc32(fileAndFolderHashes))
         fileDiskSpace = sum([file.diskSpace for file in self.files.values()])
-        self.hash = hashlib.sha256(
-            (subfolderHashes + fileHashes).encode("utf-8")).hexdigest()
         self.diskSpace = sum(subfolderDiskUsageTuple, fileDiskSpace)
         self.numFiles = sum(subfolderNumFileTuple, len(self.files))
         self.numSubdirectories = sum(subfolderNumSubdirTuple,

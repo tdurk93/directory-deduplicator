@@ -22,7 +22,7 @@ def buildTree(directoryPath: str, parent: DirectoryNode,
             # hash the contents of the file, insert into dict
             with open(entry.path, "rb") as currentFile:
                 fileContents = currentFile.read()
-                fileHash = xxhash.xxh64(fileContents).hexdigest()
+                fileHash = xxhash.xxh3_128_hexdigest(fileContents)
                 if safe:
                     fileHash += str(zlib.crc32(fileContents))
                 node.files[entry.path] = FileNode(entry.stat().st_size,

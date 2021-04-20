@@ -55,7 +55,7 @@ class DirectoryNode(FileNode):
         subfolderHashes = "".join(sorted(subfolderHashTuple))
         fileHashes = "".join(sorted([file.hash for file in self.files.values()]))
         fileAndFolderHashes = (subfolderHashes + fileHashes).encode("utf-8")
-        self.hash = xxhash.xxh64(fileAndFolderHashes).hexdigest()
+        self.hash = xxhash.xxh3_128_hexdigest(fileAndFolderHashes)
         # concatenate second hash/checksum for reduced chance of collisions
         self.hash += str(zlib.crc32(fileAndFolderHashes))
         fileDiskSpace = sum([file.diskSpace for file in self.files.values()])

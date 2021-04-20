@@ -14,7 +14,6 @@ hashes = defaultdict(list)
 def buildTree(directoryPath: str, parent: DirectoryNode) -> DirectoryNode:
     node = DirectoryNode(path=directoryPath, parent=parent)
     entries = os.scandir(directoryPath)
-    # consider sorting entries or inserting into heap
     for entry in sorted(entries, key=lambda x: x.name):
         if entry.is_file() and not entry.is_symlink():
             # TODO handle empty file case (const hash or ignore?)
@@ -25,7 +24,6 @@ def buildTree(directoryPath: str, parent: DirectoryNode) -> DirectoryNode:
                                                   m.hexdigest())
         elif entry.is_dir():
             node.subdirectoryNodes[entry.path] = buildTree(entry.path, node)
-    # print(f"Adding node to hash: {node.path}")
     if hashes[node.getHash()]:
         # This hash has already been seen. Therefore, subdirectories
         # are already duplicated in list. Remove immediate children nodes

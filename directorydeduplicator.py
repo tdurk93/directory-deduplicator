@@ -15,17 +15,17 @@ import zlib
 def buildTree(
         directoryPath: str, parent: Optional[DirectoryNode],
         directoryHashMap: Dict[str, List[DirectoryNode]],
-        safe: bool) -> Tuple[DirectoryNode, Dict[str, List[DirectoryNode]]]:
+        safe_hash: bool = False,
+        follow_symlinks: bool = False) -> Tuple[DirectoryNode, Dict[str, List[DirectoryNode]]]:
     node = DirectoryNode(path=directoryPath, parent=parent)
     entries = os.scandir(directoryPath)
     for entry in sorted(entries, key=lambda x: x.name):
-        if entry.is_file() and not entry.is_symlink():
-            # TODO handle empty file case (const hash or ignore?)
+        if entry.is_file() and (follow_symlinks or not entry.is_symlink()):
             # hash the contents of the file, insert into dict
             with open(entry.path, "rb") as currentFile:
                 fileContents = currentFile.read()
                 fileHash = xxhash.xxh3_128_hexdigest(fileContents)
-                if safe:
+                if safe_hash:
                     fileHash += str(zlib.crc32(fileContents))
                 if (entry.stat().st_size == 0):
                     fileHash = "EMPTY" # override prev value, if applicable
@@ -34,7 +34,7 @@ def buildTree(
         elif entry.is_dir():
             node.subdirectoryNodes[
                 entry.path], subdirectoryHashMap = buildTree(
-                    entry.path, node, directoryHashMap, safe)
+                    entry.path, node, directoryHashMap, safe_hash)
     if directoryHashMap[node.getHash()]:
         # This hash has already been seen. Therefore, subdirectories
         # are already duplicated in list. Remove immediate children nodes
@@ -82,21 +82,25 @@ def bytes2human(n: int, format: str = "%(value)i%(symbol)s") -> str:
 @click.command()
 @click.argument("directory-path",
                 type=click.Path(exists=True, file_okay=False))
-@click.option("--safe",
+@click.option("--safe-hash",
               is_flag=True,
               default=False,
               help="Double-check results with an additional hashing algorithm")
-def run(safe: bool, directory_path: str) -> None:
+@click.option("--follow-symlinks",
+              is_flag=True,
+              default=False,
+              help="Follow symbolic links")
+def run(safe_hash: bool, follow_symlinks: bool, directory_path: str) -> None:
     rootNode, directoryHashMap = buildTree(directory_path,
                                            None,
                                            defaultdict(list),
-                                           safe=safe)
+                                           safe_hash=safe_hash,
+                                           follow_symlinks=follow_symlinks)
 
     # add one to numSubdirectories for root node
     print(f"Scanned {rootNode.getNumSubdirectories() + 1} directories " +
           f"({bytes2human(rootNode.diskSpace)})",
           file=sys.stderr)
-    # print(rootNode.__repr__()) # uncomment for debugging
 
     duplicateDirectorySets = findDuplicateDirectorySets(directoryHashMap)
     for directorySet in duplicateDirectorySets:
@@ -108,7 +112,3 @@ def run(safe: bool, directory_path: str) -> None:
         print(f"Duplicate directory set ({summary}):", file=sys.stderr)
         print("\t" +
               "\n\t".join([node.path for node in directorySet.directoryNodes]))
-
-
-if __name__ == '__main__':
-    run()

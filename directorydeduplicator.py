@@ -27,6 +27,8 @@ def buildTree(
                 fileHash = xxhash.xxh3_128_hexdigest(fileContents)
                 if safe:
                     fileHash += str(zlib.crc32(fileContents))
+                if (entry.stat().st_size == 0):
+                    fileHash = "EMPTY" # override prev value, if applicable
                 node.files[entry.path] = FileNode(entry.stat().st_size,
                                                   fileHash)
         elif entry.is_dir():

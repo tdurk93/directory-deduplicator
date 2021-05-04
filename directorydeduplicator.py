@@ -4,12 +4,15 @@ from directory_node import DirectoryNode, FileNode
 from duplicate_directory_set import DuplicateDirectorySet
 from collections import defaultdict
 from typing import Dict, List, Optional, Tuple
+from io import BufferedReader
 
 import click
 import os
 import sys
 import xxhash
 import zlib
+
+BUFFER_SIZE = 1024*1024*10 # 10MB
 
 
 def build_tree(
@@ -27,10 +30,15 @@ def build_tree(
         if entry.is_file() and (follow_symlinks or not entry.is_symlink()):
             # hash the contents of the file, insert into dict
             with open(entry.path, "rb") as current_file:
-                file_contents = current_file.read()
-                file_hash = xxhash.xxh3_128_hexdigest(file_contents)
+                reader = BufferedReader(current_file)
+                hash_object = xxhash.xxh3_128()
+                running_crc32 = 0
+                while file_chunk := reader.read(BUFFER_SIZE):
+                    hash_object.update(file_chunk)
+                    running_crc32 = zlib.crc32(file_chunk, running_crc32)
+                file_hash = hash_object.hexdigest()
                 if safe_hash:
-                    file_hash += str(zlib.crc32(file_contents))
+                    file_hash += str(running_crc32)
                 if (entry.stat().st_size == 0):
                     file_hash = "EMPTY" # override prev value, if applicable
                 node.files[entry.path] = FileNode(entry.stat().st_size,

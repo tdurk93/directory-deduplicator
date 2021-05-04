@@ -43,7 +43,7 @@ def build_tree(
                     file_hash = "EMPTY" # override prev value, if applicable
                 node.files[entry.path] = FileNode(entry.stat().st_size,
                                                   file_hash)
-        elif entry.is_dir():
+        elif entry.is_dir() and not entry.is_symlink(): # TODO add symlink support?
             node.subdirectory_nodes[
                 entry.path], subdirectory_hash_map = build_tree(
                     entry.path, node, directory_hash_map, safe_hash)

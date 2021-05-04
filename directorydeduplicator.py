@@ -18,7 +18,11 @@ def build_tree(
         safe_hash: bool = False,
         follow_symlinks: bool = False) -> Tuple[DirectoryNode, Dict[str, List[DirectoryNode]]]:
     node = DirectoryNode(path=directory_path, parent=parent)
-    entries = os.scandir(directory_path)
+    try:
+        entries = os.scandir(directory_path)
+    except PermissionError:
+        print(f"Could not open directory {directory_path}: permission denied", file=sys.stderr)
+        return node, directory_hash_map
     for entry in sorted(entries, key=lambda x: x.name):
         if entry.is_file() and (follow_symlinks or not entry.is_symlink()):
             # hash the contents of the file, insert into dict

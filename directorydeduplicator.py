@@ -115,12 +115,15 @@ def run(safe_hash: bool, follow_symlinks: bool, directory_path: str) -> None:
           file=sys.stderr)
 
     duplicate_directory_sets = find_duplicate_directory_sets(directory_hash_map)
-    for directory_set in duplicate_directory_sets:
+    potential_space_savings = 0
+    for directory_set in sorted(duplicate_directory_sets, key=lambda x: x.disk_space, reverse=True):
         summary = ", ".join([
             f"{directory_set.num_files} files",
             f"{directory_set.num_subdirectories} folders",
             f"{bytes2human(directory_set.disk_space)}"
         ])
-        print(f"Duplicate directory set ({summary}):", file=sys.stderr)
+        print(f"Duplicate directory set ({summary}):")
         print("\t" +
               "\n\t".join([node.path for node in directory_set.directory_nodes]))
+        potential_space_savings += directory_set.disk_space * (len(directory_set.directory_nodes) - 1)
+    print(f"Potential space savings: {bytes2human(potential_space_savings)}")

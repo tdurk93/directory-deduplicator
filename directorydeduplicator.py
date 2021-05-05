@@ -28,21 +28,29 @@ def build_tree(
         return node, directory_hash_map
     for entry in sorted(entries, key=lambda x: x.name):
         if entry.is_file() and (follow_symlinks or not entry.is_symlink()):
-            # hash the contents of the file, insert into dict
-            with open(entry.path, "rb") as current_file:
-                reader = BufferedReader(current_file)
-                hash_object = xxhash.xxh3_128()
-                running_crc32 = 0
-                while file_chunk := reader.read(BUFFER_SIZE):
-                    hash_object.update(file_chunk)
-                    running_crc32 = zlib.crc32(file_chunk, running_crc32)
-                file_hash = hash_object.hexdigest()
-                if safe_hash:
-                    file_hash += str(running_crc32)
-                if (entry.stat().st_size == 0):
-                    file_hash = "EMPTY" # override prev value, if applicable
-                node.files[entry.path] = FileNode(entry.stat().st_size,
-                                                  file_hash)
+            hash_object = xxhash.xxh3_128()
+            running_crc32 = 0
+            file_hash = ""
+            file_size = entry.stat().st_size
+            try:
+                # hash the contents of the file, insert into dict
+                with open(entry.path, "rb") as current_file:
+                    reader = BufferedReader(current_file)
+                    while file_chunk := reader.read(BUFFER_SIZE):
+                        hash_object.update(file_chunk)
+                        running_crc32 = zlib.crc32(file_chunk, running_crc32)
+            except PermissionError:
+                print(f"Could not open file {entry.path}: permission denied", file=sys.stderr)
+                # use file name & size as stand-in for file contents
+                digest = f"PERMISSION_DENIED: {file_size} {entry.path}"
+                hash_object.update(digest)
+                running_crc32 = zlib.crc32(digest)
+            file_hash = hash_object.hexdigest()
+            if safe_hash:
+                file_hash += str(running_crc32)
+            if (file_size == 0):
+                file_hash = "EMPTY"  # override prev value, if applicable
+            node.files[entry.path] = FileNode(file_size, file_hash)
         elif entry.is_dir() and not entry.is_symlink(): # TODO add symlink support?
             node.subdirectory_nodes[
                 entry.path], subdirectory_hash_map = build_tree(

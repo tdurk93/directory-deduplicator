@@ -30,35 +30,37 @@ def build_tree(
               file=sys.stderr)
         return node, directory_hash_map
     for entry in sorted(entries, key=lambda x: x.name):
-        if entry.is_file() and (follow_symlinks or not entry.is_symlink()):
-            hash_object = xxhash.xxh3_128()
-            running_crc32 = 0
-            file_hash = ""
-            file_size = entry.stat().st_size
-            try:
+        hash_object = xxhash.xxh3_128()
+        running_crc32 = 0
+        file_hash = ""
+        try:
+            if entry.is_file() and (follow_symlinks or not entry.is_symlink()):
+                file_size = entry.stat().st_size
                 # hash the contents of the file, insert into dict
                 with open(entry.path, "rb") as current_file:
                     reader = BufferedReader(current_file)
                     while file_chunk := reader.read(BUFFER_SIZE):
                         hash_object.update(file_chunk)
-                        running_crc32 = zlib.crc32(file_chunk, running_crc32)
-            except PermissionError:
-                print(f"Could not open file {entry.path}: permission denied",
-                      file=sys.stderr)
-                # use file name & size as stand-in for file contents
-                digest = f"PERMISSION_DENIED: {file_size} {entry.path}"
-                hash_object.update(digest)
-                running_crc32 = zlib.crc32(digest)
-            file_hash = hash_object.hexdigest()
-            if safe_hash:
-                file_hash += str(running_crc32)
-            if (file_size == 0):
-                file_hash = "EMPTY"  # override prev value, if applicable
-            node.files[entry.path] = FileNode(file_size, file_hash)
-        elif entry.is_dir() and not entry.is_symlink():
-            node.subdirectory_nodes[
-                entry.path], subdirectory_hash_map = build_tree(
-                    entry.path, node, directory_hash_map, safe_hash)
+                        running_crc32 = zlib.crc32(file_chunk, running_crc32)  # TODO only calculate when needed
+                file_hash = hash_object.hexdigest()
+                if safe_hash:
+                    file_hash += str(running_crc32)
+                if (file_size == 0):
+                    file_hash = "EMPTY"  # override prev value, if applicable
+                node.files[entry.path] = FileNode(file_size, file_hash)
+            elif entry.is_dir() and not entry.is_symlink():
+                node.subdirectory_nodes[
+                    entry.path], subdirectory_hash_map = build_tree(
+                        entry.path, node, directory_hash_map, safe_hash)
+        except PermissionError:
+            print(f"Could not open file {entry.path}: permission denied",
+                  file=sys.stderr)
+            # use file name & size as stand-in for file contents
+            digest = f"PERMISSION_DENIED: {entry.path}".encode("utf-8")
+            file_hash = xxhash.xxh3_128(digest).hexdigest()
+            if safe_hash:  # not really that useful, honestly
+                file_hash += str(zlib.crc32(digest))
+            node.files[entry.path] = FileNode(0, file_hash)
     if directory_hash_map[node.get_hash()]:
         # This hash has already been seen. Therefore, subdirectories
         # are already duplicated in list. Remove immediate children nodes
@@ -138,7 +140,8 @@ def run(safe_hash: bool, follow_symlinks: bool, directory_path: str) -> None:
             f"{dir_set.num_subdirectories} folders",
             f"{bytes2human(dir_set.disk_space)}"
         ])
-        print(f"Duplicate directory set ({summary}):" +
+        # TODO is there a cleaner way to prepend \n\t to all entries?
+        print(f"Duplicate directory set ({summary}):\n\t" +
               "\n\t".join([node.path for node in dir_set.directory_nodes]))
         potential_space_savings += dir_set.disk_space * (
             len(dir_set.directory_nodes) - 1)

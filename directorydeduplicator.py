@@ -19,10 +19,14 @@ def build_tree(
     directory_path: str,
     parent: Optional[DirectoryNode],
     directory_hash_map: Dict[str, List[DirectoryNode]],
+    exclude_paths: List[str],
     safe_hash: bool = False,
     follow_symlinks: bool = False
 ) -> Tuple[DirectoryNode, Dict[str, List[DirectoryNode]]]:
     node = DirectoryNode(path=directory_path, parent=parent)
+    if any([os.path.commonpath([directory_path, exclude_path]) == exclude_path for exclude_path in exclude_paths]):
+        print(f"Excluding directory {directory_path} from results", file=sys.stderr)
+        return node, directory_hash_map
     try:
         entries = os.scandir(directory_path)
     except PermissionError:
@@ -112,6 +116,9 @@ def bytes2human(n: int, format: str = "%(value)i%(symbol)s") -> str:
 @click.command()
 @click.argument("directory-path",
                 type=click.Path(exists=True, file_okay=False))
+@click.option('--exclude', '-e',
+                multiple=True,
+                type=click.Path(exists=True, file_okay=False))  # TODO allow file exclusions
 @click.option("--safe-hash",
               is_flag=True,
               default=False,
@@ -120,10 +127,14 @@ def bytes2human(n: int, format: str = "%(value)i%(symbol)s") -> str:
               is_flag=True,
               default=False,
               help="Follow symbolic links")
-def run(safe_hash: bool, follow_symlinks: bool, directory_path: str) -> None:
+def run(safe_hash: bool, follow_symlinks: bool, directory_path: str, exclude: List[str]) -> None:
+    # need to resolve paths first before checking if they exist
+    resolved_exclude_paths = [os.path.realpath(os.path.expanduser(exclude_path)) for exclude_path in exclude]
+    valid_exclude_paths = [exclude_path for exclude_path in resolved_exclude_paths if os.exists(exclude_path)]
     root_node, directory_hash_map = build_tree(directory_path,
                                                None,
                                                defaultdict(list),
+                                               valid_exclude_paths,
                                                safe_hash=safe_hash,
                                                follow_symlinks=follow_symlinks)
 

@@ -41,7 +41,10 @@ def build_tree(
                     reader = BufferedReader(current_file)
                     while file_chunk := reader.read(BUFFER_SIZE):
                         hash_object.update(file_chunk)
-                        running_crc32 = zlib.crc32(file_chunk, running_crc32)  # TODO only calculate when needed
+                        if safe_hash:
+                            running_crc32 = zlib.crc32(
+                                file_chunk,
+                                running_crc32)
                 file_hash = hash_object.hexdigest()
                 if safe_hash:
                     file_hash += str(running_crc32)

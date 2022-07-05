@@ -143,9 +143,9 @@ def run(safe_hash: bool, follow_symlinks: bool, directory_path: str) -> None:
             f"{dir_set.num_subdirectories} folders",
             f"{bytes2human(dir_set.disk_space)}"
         ])
-        # TODO is there a cleaner way to prepend \n\t to all entries?
-        print(f"Duplicate directory set ({summary}):\n\t" +
-              "\n\t".join([node.path for node in dir_set.directory_nodes]))
+        print(f"Duplicate directory set ({summary}):")
+        for node in dir_set.directory_nodes:
+            print(f"\t{node.path}")
         potential_space_savings += dir_set.disk_space * (
             len(dir_set.directory_nodes) - 1)
     print(f"Potential space savings: {bytes2human(potential_space_savings)}")

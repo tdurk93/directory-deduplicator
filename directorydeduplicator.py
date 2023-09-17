@@ -55,11 +55,11 @@ def build_tree(
                 node.subdirectory_nodes[
                     entry.path], subdirectory_hash_map = build_tree(
                         entry.path, node, directory_hash_map, safe_hash)
-        except PermissionError:
-            print(f"Could not open file {entry.path}: permission denied",
+        except (PermissionError, OSError):
+            print(f"Could not open file {entry.path}",
                   file=sys.stderr)
             # use file name & size as stand-in for file contents
-            digest = f"PERMISSION_DENIED: {entry.path}".encode("utf-8")
+            digest = f"Couldn't Read: {entry.path}".encode("utf-8")
             file_hash = xxhash.xxh3_128(digest).hexdigest()
             if safe_hash:  # not really that useful, honestly
                 file_hash += str(zlib.crc32(digest))

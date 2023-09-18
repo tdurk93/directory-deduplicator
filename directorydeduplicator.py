@@ -2,6 +2,9 @@
 
 from directory_node import DirectoryNode, FileNode
 from duplicate_directory_set import DuplicateDirectorySet
+from progress_tracker import bytes_processed_queue, file_name_queue, track_progress
+from util import bytes2human, print_message
+from multiprocessing import Process
 from collections import defaultdict
 from typing import Dict, List, Optional, Tuple
 from io import BufferedReader
@@ -45,12 +48,14 @@ def build_tree(
                             running_crc32 = zlib.crc32(
                                 file_chunk,
                                 running_crc32)
+                        bytes_processed_queue.put(len(file_chunk))
                 file_hash = hash_object.hexdigest()
                 if safe_hash:
                     file_hash += str(running_crc32)
                 if (file_size == 0):
                     file_hash = "EMPTY"  # override prev value, if applicable
                 node.files[entry.path] = FileNode(file_size, file_hash)
+                file_name_queue.put(entry.name)
             elif entry.is_dir() and not entry.is_symlink():
                 node.subdirectory_nodes[
                     entry.path], subdirectory_hash_map = build_tree(
@@ -89,26 +94,6 @@ def find_duplicate_directory_sets(
                                       directory_set))
     return duplicate_directory_sets
 
-
-# shamelessly copied from https://stackoverflow.com/questions/13343700/
-def bytes2human(n: int, format: str = "%(value)i%(symbol)s") -> str:
-    """
-    >>> bytes2human(10000)
-    "9K"
-    >>> bytes2human(100001221)
-    "95M"
-    """
-    symbols = ("B", "K", "M", "G", "T", "P", "E", "Z", "Y")
-    prefix = {}
-    for i, s in enumerate(symbols[1:]):
-        prefix[s] = 1 << (i + 1) * 10
-    for symbol in reversed(symbols[1:]):
-        if n >= prefix[symbol]:
-            value = float(n) / prefix[symbol]
-            return format % locals()
-    return format % dict(symbol=symbols[0], value=n)
-
-
 @click.command()
 @click.argument("directory-path",
                 type=click.Path(exists=True, file_okay=False))
@@ -121,16 +106,24 @@ def bytes2human(n: int, format: str = "%(value)i%(symbol)s") -> str:
               default=False,
               help="Follow symbolic links")
 def run(safe_hash: bool, follow_symlinks: bool, directory_path: str) -> None:
+    p = Process(target=track_progress, daemon=True)
+    p.start()
     root_node, directory_hash_map = build_tree(directory_path,
                                                None,
                                                defaultdict(list),
                                                safe_hash=safe_hash,
                                                follow_symlinks=follow_symlinks)
 
+    p.terminate()
+    p.join()  # block/wait until the process is actually killed
+    p.close()  # close any resources associated with the process
+    print()  # add newline character
+
     # add one to num_subdirectories for root node
-    print(f"Scanned {root_node.get_num_subdirectories() + 1} directories " +
-          f"({bytes2human(root_node.disk_space)})",
+    print_message(f"Scanned {root_node.get_num_subdirectories() + 1} directories / " +
+          f"{len(directory_hash_map)} files ({bytes2human(root_node.disk_space)})",
           file=sys.stderr)
+    print()
 
     duplicate_directory_sets = find_duplicate_directory_sets(
         directory_hash_map)

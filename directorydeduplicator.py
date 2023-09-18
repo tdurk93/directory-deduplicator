@@ -2,9 +2,9 @@
 
 from directory_node import DirectoryNode, FileNode
 from duplicate_directory_set import DuplicateDirectorySet
-from progress_tracker import bytes_processed_queue, file_name_queue, track_progress
+from progress_tracker import track_progress
 from util import bytes2human, print_message
-from multiprocessing import Process
+from multiprocessing import Process, Queue
 from collections import defaultdict
 from typing import Dict, List, Tuple
 from io import BufferedReader
@@ -16,6 +16,9 @@ import xxhash
 import zlib
 
 BUFFER_SIZE = 1024 * 1024 * 10  # 10MB
+
+file_name_queue = Queue()
+bytes_processed_queue = Queue()
 
 
 def build_tree(
@@ -105,7 +108,7 @@ def find_duplicate_directory_sets(
               default=False,
               help="Follow symbolic links")
 def run(safe_hash: bool, follow_symlinks: bool, directory_path: str) -> None:
-    p = Process(target=track_progress, daemon=True)
+    p = Process(target=track_progress, args=(file_name_queue, bytes_processed_queue), daemon=True)
     p.start()
     root_node, directory_hash_map = build_tree(directory_path,
                                                defaultdict(list),

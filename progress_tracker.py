@@ -2,9 +2,6 @@ from util import bytes2human, print_message
 from multiprocessing import Queue
 from time import time
 
-file_name_queue = Queue()
-bytes_processed_queue = Queue()
-
 
 def format_file_name(file_name: str):
     if len(file_name) > 23:
@@ -21,7 +18,7 @@ def format_elapsed_time(seconds):
     return f"{int(seconds / 3600):02d}:{(int(seconds/60) % 60):02d}:{(int(seconds) % 60):02d}"
 
 
-def track_progress():
+def track_progress(file_name_queue: Queue, bytes_processed_queue: Queue):
     start_time = time()
     prev_time = start_time
     seconds_elapsed = 0

@@ -51,5 +51,4 @@ def track_progress():
                 elapsed_time=format_elapsed_time(seconds_elapsed))
             prev_time = curr_time
             seconds_elapsed = curr_time - start_time
-            bytes_processed = 0
             bytes_this_second = 0

@@ -117,10 +117,9 @@ def run(safe_hash: bool, follow_symlinks: bool, directory_path: str) -> None:
     p.terminate()
     p.join()  # block/wait until the process is actually killed
     p.close()  # close any resources associated with the process
-    print()  # add newline character
 
     # add one to num_subdirectories for root node
-    print_message(f"Scanned {root_node.get_num_subdirectories() + 1} directories / " +
+    print_message(f"Scanned {root_node.get_num_subdirectories() + 1} directories, " +
           f"{len(directory_hash_map)} files ({bytes2human(root_node.disk_space)})",
           file=sys.stderr)
     print()

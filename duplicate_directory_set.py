@@ -16,5 +16,5 @@ class DuplicateDirectorySet:
             f"disk_space: {self.disk_space}",
             f"num_files: {self.num_files}",
             f"num_subdirectories: {self.num_subdirectories}",
-            f"directory_nodes: {self.directory_nodes}"
+            f"directory_nodes: {self.directory_nodes}]"
         ])

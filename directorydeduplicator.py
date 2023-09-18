@@ -13,7 +13,6 @@ import click
 import os
 import sys
 import xxhash
-import zlib
 
 BUFFER_SIZE = 1024 * 1024 * 10  # 10MB
 
@@ -24,7 +23,6 @@ bytes_processed_queue = Queue()
 def build_tree(
     directory_path: str,
     directory_hash_map: Dict[str, List[DirectoryNode]],
-    safe_hash: bool = False,
     follow_symlinks: bool = False
 ) -> Tuple[DirectoryNode, Dict[str, List[DirectoryNode]]]:
     node = DirectoryNode(path=directory_path)
@@ -36,7 +34,6 @@ def build_tree(
         return node, directory_hash_map
     for entry in sorted(entries, key=lambda x: x.name):
         hash_object = xxhash.xxh3_128()
-        running_crc32 = 0
         file_hash = ""
         try:
             if entry.is_file() and (follow_symlinks or not entry.is_symlink()):
@@ -46,14 +43,8 @@ def build_tree(
                     reader = BufferedReader(current_file)
                     while file_chunk := reader.read(BUFFER_SIZE):
                         hash_object.update(file_chunk)
-                        if safe_hash:
-                            running_crc32 = zlib.crc32(
-                                file_chunk,
-                                running_crc32)
                         bytes_processed_queue.put(len(file_chunk))
                 file_hash = hash_object.hexdigest()
-                if safe_hash:
-                    file_hash += str(running_crc32)
                 if (file_size == 0):
                     file_hash = "EMPTY"  # override prev value, if applicable
                 node.files[entry.path] = FileNode(file_size, file_hash)
@@ -61,15 +52,13 @@ def build_tree(
             elif entry.is_dir() and not entry.is_symlink():
                 node.subdirectory_nodes[
                     entry.path], subdirectory_hash_map = build_tree(
-                        entry.path, directory_hash_map, safe_hash)
+                        entry.path, directory_hash_map, follow_symlinks)
         except (PermissionError, OSError):
             print(f"Could not open file {entry.path}",
                   file=sys.stderr)
             # use file name & size as stand-in for file contents
             digest = f"Couldn't Read: {entry.path}".encode("utf-8")
             file_hash = xxhash.xxh3_128(digest).hexdigest()
-            if safe_hash:  # not really that useful, honestly
-                file_hash += str(zlib.crc32(digest))
             node.files[entry.path] = FileNode(0, file_hash)
     if directory_hash_map[node.get_hash()]:
         # This hash has already been seen. Therefore, subdirectories
@@ -99,20 +88,15 @@ def find_duplicate_directory_sets(
 @click.command()
 @click.argument("directory-path",
                 type=click.Path(exists=True, file_okay=False))
-@click.option("--safe-hash",
-              is_flag=True,
-              default=False,
-              help="Double-check results with an additional hashing algorithm")
 @click.option("--follow-symlinks",
               is_flag=True,
               default=False,
               help="Follow symbolic links")
-def run(safe_hash: bool, follow_symlinks: bool, directory_path: str) -> None:
+def run(follow_symlinks: bool, directory_path: str) -> None:
     p = Process(target=track_progress, args=(file_name_queue, bytes_processed_queue), daemon=True)
     p.start()
     root_node, directory_hash_map = build_tree(directory_path,
                                                defaultdict(list),
-                                               safe_hash=safe_hash,
                                                follow_symlinks=follow_symlinks)
 
     p.terminate()

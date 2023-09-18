@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Any, cast, Dict, Optional, ValuesView
+from typing import Any, cast, Dict, ValuesView
 from collections import OrderedDict
 import xxhash
 import zlib
@@ -15,9 +15,8 @@ class FileNode:
 
 
 class DirectoryNode(FileNode):
-    def __init__(self, parent: Optional[DirectoryNode], path: str):
+    def __init__(self, path: str):
         super().__init__(disk_space=-1, hash="")
-        self.parent = parent
         self.path = path
         self.subdirectory_nodes: Dict[str, DirectoryNode] = OrderedDict()
         self.files: Dict[str, FileNode] = OrderedDict()

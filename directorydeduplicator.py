@@ -6,7 +6,7 @@ from progress_tracker import bytes_processed_queue, file_name_queue, track_progr
 from util import bytes2human, print_message
 from multiprocessing import Process
 from collections import defaultdict
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 from io import BufferedReader
 
 import click
@@ -20,12 +20,11 @@ BUFFER_SIZE = 1024 * 1024 * 10  # 10MB
 
 def build_tree(
     directory_path: str,
-    parent: Optional[DirectoryNode],
     directory_hash_map: Dict[str, List[DirectoryNode]],
     safe_hash: bool = False,
     follow_symlinks: bool = False
 ) -> Tuple[DirectoryNode, Dict[str, List[DirectoryNode]]]:
-    node = DirectoryNode(path=directory_path, parent=parent)
+    node = DirectoryNode(path=directory_path)
     try:
         entries = os.scandir(directory_path)
     except PermissionError:
@@ -59,7 +58,7 @@ def build_tree(
             elif entry.is_dir() and not entry.is_symlink():
                 node.subdirectory_nodes[
                     entry.path], subdirectory_hash_map = build_tree(
-                        entry.path, node, directory_hash_map, safe_hash)
+                        entry.path, directory_hash_map, safe_hash)
         except (PermissionError, OSError):
             print(f"Could not open file {entry.path}",
                   file=sys.stderr)
@@ -109,7 +108,6 @@ def run(safe_hash: bool, follow_symlinks: bool, directory_path: str) -> None:
     p = Process(target=track_progress, daemon=True)
     p.start()
     root_node, directory_hash_map = build_tree(directory_path,
-                                               None,
                                                defaultdict(list),
                                                safe_hash=safe_hash,
                                                follow_symlinks=follow_symlinks)

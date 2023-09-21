@@ -49,33 +49,46 @@ def build_metadata_tree(directory_path: str, follow_symlinks: bool = False) -> D
     return node
 
 
-def build_hash_map(node: DirectoryNode, working_hash_map: Dict[str, List[DirectoryNode]]) -> str:
+def get_summary_str(file_or_folder_name: str, digest: str, match_names: bool) -> str:
+    return f"{file_or_folder_name}_{digest}" if match_names else digest
+
+def get_file_summary(file_node: DirectoryNode) -> str:
+    if file_node.disk_space == 0:
+        # TODO improve handling of empty files (exclude from results by default?)
+        return EMPTY_FILE_DIGEST
+    hash_builder = xxhash.xxh3_128()
+    try:
+        # hash the contents of the file
+        with open(file_node.path, "rb") as current_file:
+            file_name_queue.put(file_node.name)
+            reader = BufferedReader(current_file)
+            while file_chunk := reader.read(BUFFER_SIZE):
+                hash_builder.update(file_chunk)
+                bytes_processed_queue.put(len(file_chunk))
+        digest: str = hash_builder.hexdigest()
+        return digest
+    except (PermissionError, OSError):
+        print(f"Could not open file {file_node.path}",
+                file=sys.stderr)
+        # Hashing the full file path should ensure a unique hash,
+        # preventing this directory (and its parents) from being considered.
+        # Is this desirable behavior?
+        content = f"Couldn't Read: {file_node.path}".encode()
+        digest = xxhash.xxh3_128_hexdigest(content)
+
+
+def build_hash_map(node: DirectoryNode,
+                   working_hash_map: Dict[str, List[DirectoryNode]],
+                   match_names: bool) -> str:
     file_hashes: List[str] = []
+    for file_node in node.files.values():
+        file_summary: str = get_summary_str(file_node.name, get_file_summary(file_node), match_names)
+        file_hashes.append(file_summary)
     subdir_hashes: List[str] = []
-    for file_path, file_node in node.files.items():
-        if node.disk_space == 0:
-                file_hashes.append(EMPTY_FILE_DIGEST)
-                # TODO improve handling of empty files (exclude from results by default?)
-                continue
-        hash_builder = xxhash.xxh3_128()
-        try:
-            # hash the contents of the file
-            with open(file_path, "rb") as current_file:
-                file_name_queue.put(file_node.name)
-                reader = BufferedReader(current_file)
-                while file_chunk := reader.read(BUFFER_SIZE):
-                    hash_builder.update(file_chunk)
-                    bytes_processed_queue.put(len(file_chunk))
-            file_hashes.append(hash_builder.hexdigest())
-        except (PermissionError, OSError):
-            print(f"Could not open file {file_path}",
-                  file=sys.stderr)
-            # use file name & size as stand-in for file contents
-            summary = f"Couldn't Read: {file_path}".encode()
-            file_hashes.append(xxhash.xxh3_128_hexdigest(summary))
     for child_node in node.subdir_nodes.values():
-        subdir_hash = build_hash_map(child_node, working_hash_map)
-        subdir_hashes.append(subdir_hash)
+        subdir_digest = build_hash_map(child_node, working_hash_map, match_names)
+        subdir_summary = get_summary_str(child_node.name, subdir_digest, match_names)
+        subdir_hashes.append(subdir_summary)
     node_summary: str = ",".join(sorted(file_hashes) + sorted(subdir_hashes))
     node.hash = xxhash.xxh3_128_hexdigest(node_summary.encode())
     working_hash_map[node.hash].append(node)
@@ -103,14 +116,21 @@ def find_duplicate_directory_sets(
               is_flag=True,
               default=False,
               help="Follow symbolic links")
-def run(follow_symlinks: bool, directory_path: str) -> None:
+@click.option("--match-names",
+              is_flag=True,
+              default=False,
+              help="Require file & subdirectory names to match")
+def run(directory_path: str, follow_symlinks: bool, match_names: bool) -> None:
     print("Scanning file metadata...")
+
     root_node: DirectoryNode = build_metadata_tree(directory_path=directory_path, follow_symlinks=follow_symlinks)
+
     print(f"Found {root_node.num_files} files ({bytes2human(root_node.disk_space)}), {root_node.num_subdirectories} folders")
     p = Process(target=track_progress, args=(file_name_queue, bytes_processed_queue), daemon=True)
     p.start()
     directory_hash_map = defaultdict(list)
-    build_hash_map(root_node, directory_hash_map)
+
+    build_hash_map(root_node, directory_hash_map, match_names)
 
     p.terminate()
     p.join()  # block/wait until the process is actually killed

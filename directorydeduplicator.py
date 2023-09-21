@@ -35,7 +35,7 @@ def build_metadata_tree(directory_path: str, follow_symlinks: bool = False) -> D
                 continue
             elif entry.is_file():
                 file_size = entry.stat().st_size
-                node.files[entry.path] = MiNode(entry.name, file_size)
+                node.files[entry.path] = MiNode(entry.path, file_size)
                 node.disk_space += file_size
                 node.num_files += 1
             elif entry.is_dir():

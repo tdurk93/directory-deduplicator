@@ -3,24 +3,26 @@ import sys
 
 DEFAULT_LINE_WIDTH = 120
 
-# shamelessly copied from https://stackoverflow.com/questions/13343700/
+# Based on https://stackoverflow.com/questions/13343700/
 # TODO consider adding a decimal when < 10 (e.g. 1.7 GB)
-def bytes2human(n: int, format: str = "%(value)i%(symbol)s") -> str:
+def bytes2human(n: int) -> str:
     """
     >>> bytes2human(10000)
     "9K"
     >>> bytes2human(100001221)
     "95M"
     """
-    symbols = ("B", "K", "M", "G", "T", "P", "E", "Z", "Y")
+    symbols = ("B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB")
     prefix = {}
     for i, s in enumerate(symbols[1:]):
         prefix[s] = 1 << (i + 1) * 10
     for symbol in reversed(symbols[1:]):
         if n >= prefix[symbol]:
             value = float(n) / prefix[symbol]
-            return format % locals()
-    return format % dict(symbol=symbols[0], value=n)
+            # if value < 10, include a single decimal
+            value = float(int(value*10)/10) if value < 10 else int(value)
+            return f"{value} {symbol}"
+    return f"{n} {symbols[0]}"
 
 
 def get_fixed_length_string(message: str, line_width: int) -> str:

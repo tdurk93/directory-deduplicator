@@ -173,7 +173,9 @@ def run(directory_path: str, follow_symlinks: bool, match_names: bool, import_fi
     duplicate_directory_sets = find_duplicate_directory_sets(
         directory_hash_map)
     potential_space_savings = 0
-    for dir_set in sorted(duplicate_directory_sets,
+
+    filtered_results = filter(lambda directory_set: any(map(lambda n : not n.tag, directory_set.directory_nodes)), duplicate_directory_sets)
+    for dir_set in sorted(filtered_results,
                           key=lambda x: x.disk_space,
                           reverse=True):
         summary = ", ".join([

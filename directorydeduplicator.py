@@ -2,15 +2,18 @@
 
 from directory_node import DirectoryNode, MiNode
 from duplicate_directory_set import DuplicateDirectorySet
+from execution_result import ExecutionResult
 from progress_tracker import track_progress
 from util import bytes2human, print_message
 from multiprocessing import Process, Queue
 from collections import defaultdict
+from termcolor import colored
 from typing import Dict, List
 from io import BufferedReader
 
 import click
 import os
+import pickle
 import sys
 import xxhash
 
@@ -120,15 +123,33 @@ def find_duplicate_directory_sets(
               is_flag=True,
               default=False,
               help="Require file & subdirectory names to match")
-def run(directory_path: str, follow_symlinks: bool, match_names: bool) -> None:
+@click.option("--import-file",
+              multiple=True,
+              default=[],
+              help="import data from a previous scan and compare with current scan. Can be used mutliple times.")
+@click.option("--export-file",
+              help="export scan data for future import")
+def run(directory_path: str, follow_symlinks: bool, match_names: bool, import_file: List[str], export_file: str) -> None:
     print("Scanning file metadata...")
 
     root_node: DirectoryNode = build_metadata_tree(directory_path=directory_path, follow_symlinks=follow_symlinks)
 
     print(f"Found {root_node.num_files} files ({bytes2human(root_node.disk_space)}), {root_node.num_subdirectories} folders")
+
+    directory_hash_map = defaultdict(list)
+    for import_path in import_file:
+        with open(import_path,'rb') as import_file:
+            print(f"Importing results from {import_path}...", end="")
+            imported_results: ExecutionResult = pickle.load(import_file)
+            for hash, nodes in imported_results.hashes.items():
+                for n in nodes:
+                    if not n.tag:  # keep original tags when nodes are imported, exported, then re-imported
+                        n.tag = import_path
+                directory_hash_map[hash].extend(nodes)
+            print("done")
+
     p = Process(target=track_progress, args=(file_name_queue, bytes_processed_queue), daemon=True)
     p.start()
-    directory_hash_map = defaultdict(list)
 
     build_hash_map(root_node, directory_hash_map, match_names)
 
@@ -141,6 +162,13 @@ def run(directory_path: str, follow_symlinks: bool, match_names: bool) -> None:
           f"{len(directory_hash_map)} files ({bytes2human(root_node.disk_space)})",
           file=sys.stderr)
     print()
+
+    if export_file:
+        print(f"Exporting results to {export_file}...", end="")
+        with open(export_file, 'wb') as f:
+            run_result: ExecutionResult = ExecutionResult(root_node, directory_hash_map)
+            pickle.dump(run_result, f)  # TODO consider using JSON instead of pickle format (& change 'wb' to 'w')
+        print(" done")
 
     duplicate_directory_sets = find_duplicate_directory_sets(
         directory_hash_map)
@@ -155,7 +183,8 @@ def run(directory_path: str, follow_symlinks: bool, match_names: bool) -> None:
         ])
         print(f"Duplicate directory set ({summary}):")
         for node in dir_set.directory_nodes:
-            print(f"\t{node.path}")
+            node_tag_str = f"({colored(node.tag, 'green')})" if node.tag else ""
+            print(f"\t{node_tag_str} {node.path}")
         potential_space_savings += dir_set.disk_space * (
             len(dir_set.directory_nodes) - 1)
     print(f"Potential space savings: {bytes2human(potential_space_savings)}")

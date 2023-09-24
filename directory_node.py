@@ -9,7 +9,8 @@ class MiNode:  # represents a file or directory (play on "inode" and "MyNode")
         self.path = path
         self.name = basename(path)  # returns empty string for directories
         self.disk_space = disk_space
-        self.hash = "" # TODO consider removing?
+        self.hash = ""  # TODO consider removing?
+        self.tag = ""  # used when importing data from previous runs
 
 
     def __repr__(self) -> str:

@@ -1,7 +1,10 @@
-from typing import Callable, Dict, NoReturn
+from queue import Empty
+import sys
+from typing import Callable, List, NoReturn
 from util import bytes2human, format_elapsed_time, print_message
 from multiprocessing import Queue
-from time import time
+from time import sleep, time
+import signal
 
 FILE_NAME_VISIBLE_LENGTH = 15
 DATA_FIELD_WIDTH: int = 7  # max length should be 7 (e.g. "1023 GB")
@@ -17,6 +20,16 @@ def format_file_name(file_name: str, length: int) -> str:
         return file_name
 
 
+def on_terminate(queues: List[Queue]) -> None:
+    for q in queues:
+        try:
+            while not q.empty():
+                q.get_nowait()
+        except Empty:
+            pass
+    sys.exit(0)  # exit from this subprocess
+
+
 def track_progress(file_name_queue: Queue, bytes_processed_queue: Queue, print_func: Callable) -> NoReturn:
     start_time = time()
     prev_time = start_time
@@ -26,13 +39,15 @@ def track_progress(file_name_queue: Queue, bytes_processed_queue: Queue, print_f
     bytes_processed = 0
     num_files_processed = 0
 
-    while True:  # this exits when the forked process is killed
+    # since the atexit module doesn't work for subprocesses, I have to capture the SIGTERM signal
+    signal.signal(signal.SIGTERM, lambda signalnum, frame: on_terminate([file_name_queue, bytes_processed_queue]))
+
+    while True:
+        sleep(0.1)
         curr_time = time()
-        try:
+        while not file_name_queue.empty():
             curr_file_name = file_name_queue.get_nowait()
             num_files_processed += 1
-        except Exception:
-            pass
         while not bytes_processed_queue.empty():
             additional_bytes = bytes_processed_queue.get_nowait()
             bytes_this_second += additional_bytes
@@ -56,6 +71,7 @@ def print_file_hash_status(curr_file_name: str, num_files_processed: int, data_r
     print_message(message)
 
 
+# Not all inputs are used here but this function needs the same signature as as print_file_hash_status
 def print_fs_scan_status(curr_file_name: str, num_files_processed: int, data_rate: str, data_total: str, elapsed_time: str) -> None:
     print_message(f"Found {num_files_processed} files | Elapsed time: {elapsed_time}", line_width=80)
 

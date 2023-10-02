@@ -3,11 +3,12 @@
 from directory_node import DirectoryNode, MiNode
 from duplicate_directory_set import DuplicateDirectorySet
 from execution_result import ExecutionResult
-from progress_tracker import track_progress
-from util import bytes2human, print_message
+from progress_tracker import track_file_hash_progress, track_fs_scan_progress
+from util import bytes2human, format_elapsed_time, print_message
 from multiprocessing import Process, Queue
 from collections import defaultdict
 from termcolor import colored
+from time import time
 from typing import Dict, List
 from io import BufferedReader
 
@@ -41,13 +42,14 @@ def build_metadata_tree(directory_path: str, follow_symlinks: bool = False) -> D
                 node.files[entry.path] = MiNode(entry.path, file_size)
                 node.disk_space += file_size
                 node.num_files += 1
+                file_name_queue.put(entry.name)  # the queue is only used to track the number of files here
             elif entry.is_dir():
                 subdir_node = build_metadata_tree(entry.path, follow_symlinks)
                 node.disk_space += subdir_node.disk_space
                 node.num_files += subdir_node.num_files
                 node.num_subdirectories += subdir_node.num_subdirectories + 1
                 node.subdir_nodes[entry.path] = subdir_node
-        except:
+        except Exception:
             print(f"Could not read metadata for path {entry.path}", file=sys.stderr)
     return node
 
@@ -55,29 +57,30 @@ def build_metadata_tree(directory_path: str, follow_symlinks: bool = False) -> D
 def get_summary_str(file_or_folder_name: str, digest: str, match_names: bool) -> str:
     return f"{file_or_folder_name}_{digest}" if match_names else digest
 
-def get_file_summary(file_node: DirectoryNode) -> str:
+
+def get_file_summary(file_node: MiNode) -> str:
     if file_node.disk_space == 0:
         # TODO improve handling of empty files (exclude from results by default?)
         return EMPTY_FILE_DIGEST
     hash_builder = xxhash.xxh3_128()
+    digest: str = ""
     try:
         # hash the contents of the file
         with open(file_node.path, "rb") as current_file:
             file_name_queue.put(file_node.name)
-            reader = BufferedReader(current_file)
-            while file_chunk := reader.read(BUFFER_SIZE):
+            while file_chunk := current_file.read(BUFFER_SIZE):
                 hash_builder.update(file_chunk)
                 bytes_processed_queue.put(len(file_chunk))
-        digest: str = hash_builder.hexdigest()
-        return digest
+        digest = hash_builder.hexdigest()
     except (PermissionError, OSError):
         print(f"Could not open file {file_node.path}",
-                file=sys.stderr)
+            file=sys.stderr)
         # Hashing the full file path should ensure a unique hash,
         # preventing this directory (and its parents) from being considered.
         # Is this desirable behavior?
         content = f"Couldn't Read: {file_node.path}".encode()
         digest = xxhash.xxh3_128_hexdigest(content)
+    return digest
 
 
 def build_hash_map(node: DirectoryNode,
@@ -124,49 +127,62 @@ def find_duplicate_directory_sets(
               default=False,
               help="Require file & subdirectory names to match")
 @click.option("--import-file",
+              # type=click.Path(allow_dash=False, dir_okay=False, exists=True, file_okay=True),
               multiple=True,
               default=[],
               help="import data from a previous scan and compare with current scan. Can be used mutliple times.")
 @click.option("--export-file",
+              # type=click.Path(writable=True, dir_okay=False, exists=True),
               help="export scan data for future import")
 def run(directory_path: str, follow_symlinks: bool, match_names: bool, import_file: List[str], export_file: str) -> None:
     print("Scanning file metadata...")
+    start_time: float = time()
+
+    fs_scan_tracker = Process(target=track_fs_scan_progress, args=(file_name_queue,), daemon=True)
+    fs_scan_tracker.start()
 
     root_node: DirectoryNode = build_metadata_tree(directory_path=directory_path, follow_symlinks=follow_symlinks)
 
-    print(f"Found {root_node.num_files} files ({bytes2human(root_node.disk_space)}), {root_node.num_subdirectories} folders")
+    fs_scan_tracker.terminate()
+    fs_scan_tracker.join()  # block/wait until the process is actually killed
+    fs_scan_tracker.close()  # close any resources associated with the process
+
+    fs_scan_elapsed_time: str = format_elapsed_time(time() - start_time)
+    print_message(f"Found {root_node.num_files} files ({bytes2human(root_node.disk_space)}), {root_node.num_subdirectories} folders in {fs_scan_elapsed_time}",
+        line_width=80, file=sys.stderr)
+    print()
 
     directory_hash_map = defaultdict(list)
     for import_path in import_file:
-        with open(import_path,'rb') as import_file:
+        with open(import_path, 'rb') as f:
             print(f"Importing results from {import_path}...", end="")
-            imported_results: ExecutionResult = pickle.load(import_file)
+            imported_results: ExecutionResult = pickle.load(f)
             for hash, nodes in imported_results.hashes.items():
                 for n in nodes:
                     if not n.tag:  # keep original tags when nodes are imported, exported, then re-imported
-                        n.tag = import_path
+                        n.tag = imported_results.tag
                 directory_hash_map[hash].extend(nodes)
             print("done")
 
-    p = Process(target=track_progress, args=(file_name_queue, bytes_processed_queue), daemon=True)
-    p.start()
+    file_hash_tracker = Process(target=track_file_hash_progress, args=(file_name_queue, bytes_processed_queue), daemon=True)
+    file_hash_tracker.start()
 
     build_hash_map(root_node, directory_hash_map, match_names)
 
-    p.terminate()
-    p.join()  # block/wait until the process is actually killed
-    p.close()  # close any resources associated with the process
+    file_hash_tracker.terminate()
+    file_hash_tracker.join()  # block/wait until the process is actually killed
+    file_hash_tracker.close()  # close any resources associated with the process
 
     # add one to num_subdirectories for root node
     print_message(f"Scanned {root_node.num_subdirectories + 1} directories, " +
-          f"{len(directory_hash_map)} files ({bytes2human(root_node.disk_space)})",
-          file=sys.stderr)
+        f"{len(directory_hash_map)} files ({bytes2human(root_node.disk_space)})",
+        file=sys.stderr)
     print()
 
     if export_file:
         print(f"Exporting results to {export_file}...", end="")
         with open(export_file, 'wb') as f:
-            run_result: ExecutionResult = ExecutionResult(root_node, directory_hash_map)
+            run_result: ExecutionResult = ExecutionResult(root_node, directory_hash_map, "TODO")
             pickle.dump(run_result, f)  # TODO consider using JSON instead of pickle format (& change 'wb' to 'w')
         print(" done")
 

@@ -7,7 +7,8 @@ setup(
     includ_package_data=True,
     install_requires=[
         "Click",
-        "xxhash"
+        "xxhash",
+        "termcolor"
     ],
     entry_points="""
         [console_scripts]

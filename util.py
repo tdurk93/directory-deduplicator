@@ -31,5 +31,9 @@ def get_fixed_length_string(message: str, line_width: int) -> str:
     return message + " "*paddingLength
 
 
-def print_message(message: str, line_width: str = DEFAULT_LINE_WIDTH, file=sys.stdout):
+def print_message(message: str, line_width: int = DEFAULT_LINE_WIDTH, file=sys.stdout) -> None:
     print(get_fixed_length_string(message, line_width), end="\r", file=file)
+
+
+def format_elapsed_time(seconds) -> str:
+    return f"{int(seconds / 3600):02d}:{(int(seconds/60) % 60):02d}:{(int(seconds) % 60):02d}"

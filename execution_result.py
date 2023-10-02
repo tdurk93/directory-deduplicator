@@ -4,7 +4,8 @@ from typing import Dict, List
 
 # class storing results of an execution. Used for (de-)serialization
 class ExecutionResult:
-    def __init__(self, root_node: DirectoryNode, hashes: Dict[str, List[DirectoryNode]]):
+    def __init__(self, root_node: DirectoryNode, hashes: Dict[str, List[DirectoryNode]], tag: str) -> None:
         self.timestamp = datetime.now().isoformat()
         self.root: DirectoryNode = root_node
         self.hashes = hashes
+        self.tag = tag

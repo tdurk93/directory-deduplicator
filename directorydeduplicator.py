@@ -42,7 +42,7 @@ def build_metadata_tree(directory_path: str, follow_symlinks: bool = False) -> D
                 node.files[entry.path] = MiNode(entry.path, file_size)
                 node.disk_space += file_size
                 node.num_files += 1
-                # file_name_queue.put(entry.name)  # for filesystem scanning, the specific values in the queue are unused. Only the number of files is tracked.
+                file_name_queue.put(entry.name)  # for filesystem scanning, the specific values in the queue are unused. Only the number of files is tracked.
             elif entry.is_dir():
                 subdir_node = build_metadata_tree(entry.path, follow_symlinks)
                 node.disk_space += subdir_node.disk_space

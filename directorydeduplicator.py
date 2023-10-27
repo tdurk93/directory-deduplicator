@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+from more_itertools import flatten
 from directory_node import DirectoryNode, MiNode
 from duplicate_directory_set import DuplicateDirectorySet
 from execution_result import ExecutionResult
@@ -84,7 +85,7 @@ def get_file_summary(file_node: MiNode) -> str:
 
 def build_hash_map(node: DirectoryNode,
                    working_hash_map: Dict[str, List[DirectoryNode]],
-                   match_names: bool) -> str:
+                   match_names: bool = False) -> str:
     file_hashes: List[str] = []
     for file_node in node.files.values():
         file_summary: str = get_summary_str(file_node.name, get_file_summary(file_node), match_names)
@@ -100,18 +101,46 @@ def build_hash_map(node: DirectoryNode,
     return node.hash
 
 
+def simplify_duplicates(hash_map: Dict[str, List[DirectoryNode]]) -> None:
+    # Since dictionaries are ordered (as of python 3.7), we know that later hashes/entries/nodes
+    # will be parents of earlier nodes. We can used the reversed() iterator (supported as of 3.8)
+    # to start from the root node's hash, and work our way "down" the tree.
+    for hash, nodes in reversed(hash_map.items()):
+        if len(list(filter(lambda n: not n.exclude, nodes))) > 1:  # there are multiple directories with this hash (duplicates)
+            simplify_duplicates_helper(hash, hash_map)
+
+
+def simplify_duplicates_helper(hash: str, hash_map: Dict[str, List[DirectoryNode]]) -> None:
+    curr_nodes = hash_map[hash]
+    dirs_with_hash = len(curr_nodes)
+    for child_nodes_for_hash in map(lambda n: hash_map[n.hash], curr_nodes[0].subdir_nodes.values()):
+        if len(child_nodes_for_hash) == dirs_with_hash:  # we don't want to report subdirectories of duplicate dirs...
+            for n in child_nodes_for_hash:
+                n.exclude = True
+        else:  # ... unless there is at least one additional directory that is a duplicate of this subdirectory
+            # In this case, we want to exclude all but one of the original set of duplicates,
+            # so the "space saved" calculation can remain accurate.
+
+            # You are not expected to understand this
+            child_nodes_of_curr_nodes = list(flatten(map(lambda n: filter(lambda n2: n2.hash == child_nodes_for_hash[0].hash, n.subdir_nodes.values()), curr_nodes)))
+
+            for n in child_nodes_of_curr_nodes[1:]:  # don't exclude one of the children of the original nodes
+                n.exclude = True
+        simplify_duplicates_helper(child_nodes_for_hash[0].hash, hash_map)
+
 def find_duplicate_directory_sets(
     directory_hash_map: Dict[str, List[DirectoryNode]]
 ) -> List[DuplicateDirectorySet]:
     duplicate_directory_sets = []
     for directory_set in directory_hash_map.values():
-        if len(directory_set) > 1:
+        filtered_dir_set = list(filter(lambda n: not n.exclude, directory_set))
+        if len(filtered_dir_set) > 1:
             num_files = directory_set[0].num_files
             num_subdirs = directory_set[0].num_subdirectories
             disk_space = directory_set[0].disk_space
             duplicate_directory_sets.append(
                 DuplicateDirectorySet(disk_space, num_files, num_subdirs,
-                                      directory_set))
+                                      filtered_dir_set))
     return duplicate_directory_sets
 
 @click.command()
@@ -161,8 +190,8 @@ def run(directory_path: str, follow_symlinks: bool, match_names: bool, import_fi
         line_width=80, file=sys.stderr)
     print()
 
-    # load/import results from files, if provided
     directory_hash_map = defaultdict(list)
+    # load/import results from files, if provided
     for import_path in import_files:
         import_tag: str = ""
         if "=" in import_path:  # pull out tag name if provided
@@ -208,6 +237,8 @@ def run(directory_path: str, follow_symlinks: bool, match_names: bool, import_fi
             run_result: ExecutionResult = ExecutionResult(root_node, directory_hash_map, export_tag)
             pickle.dump(run_result, f)
         print(" done")
+
+    simplify_duplicates(directory_hash_map)
 
     duplicate_directory_sets = find_duplicate_directory_sets(
         directory_hash_map)

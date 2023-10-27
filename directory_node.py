@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Any, cast, Dict, ValuesView
+from typing import Dict
 from collections import OrderedDict
 from os.path import basename
 
@@ -11,6 +11,7 @@ class MiNode:  # represents a file or directory (play on "inode" and "MyNode")
         self.disk_space = disk_space
         self.hash = ""  # TODO consider removing?
         self.tag = ""  # used when importing data from previous runs
+        self.exclude = False  # subdirectories/files of duplicate directories are excluded
 
 
     def __repr__(self) -> str:
